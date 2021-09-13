@@ -2,13 +2,13 @@
 
 from dagster import (
     AssetKey,
+    Out,
     AssetMaterialization,
     EventMetadata,
     Output,
     OutputContext,
-    OutputDefinition,
-    pipeline,
-    solid,
+    op,
+    graph,
 )
 
 
@@ -28,53 +28,53 @@ def calculate_bytes(df):
     return 1.0
 
 
-# start_materialization_solids_marker_0
-@solid
-def my_simple_solid():
+# start_materialization_ops_marker_0
+@op
+def my_simple_op():
     df = read_df()
     remote_storage_path = persist_to_storage(df)
     return remote_storage_path
 
 
-# end_materialization_solids_marker_0
+# end_materialization_ops_marker_0
 
-# start_materialization_solids_marker_1
-@solid
-def my_materialization_solid(context):
+# start_materialization_ops_marker_1
+@op
+def my_materialization_op(context):
     df = read_df()
     remote_storage_path = persist_to_storage(df)
     yield AssetMaterialization(asset_key="my_dataset", description="Persisted result to storage")
     yield Output(remote_storage_path)
 
 
-# end_materialization_solids_marker_1
+# end_materialization_ops_marker_1
 
-# start_simple_asset_solid
+# start_simple_asset_op
 
 
-@solid
-def my_asset_solid(context):
+@op
+def my_asset_op(context):
     df = read_df()
     persist_to_storage(df)
     yield AssetMaterialization(asset_key="my_dataset")
     yield Output(df)
 
 
-# end_simple_asset_solid
+# end_simple_asset_op
 
-# start_output_def_mat_solid_0
+# start_output_def_mat_op_0
 
 
-@solid(output_defs=[OutputDefinition(asset_key=AssetKey("my_dataset"))])
-def my_constant_asset_solid(context):
+@op(out=Out(asset_key=AssetKey("my_dataset")))
+def my_constant_asset_op(context):
     df = read_df()
     persist_to_storage(df)
     yield Output(df)
 
 
-# end_output_def_mat_solid_0
+# end_output_def_mat_op_0
 
-# start_output_def_mat_solid_1
+# start_output_def_mat_op_1
 
 
 def get_asset_key(context: OutputContext):
@@ -82,21 +82,21 @@ def get_asset_key(context: OutputContext):
     return AssetKey(f"my_dataset_{mode}")
 
 
-@solid(output_defs=[OutputDefinition(asset_key=get_asset_key)])
-def my_variable_asset_solid(context):
+@op(out=Out(asset_key=get_asset_key))
+def my_variable_asset_op(context):
     df = read_df()
     persist_to_storage(df)
     yield Output(df)
 
 
-# end_output_def_mat_solid_1
+# end_output_def_mat_op_1
 
 # start_partitioned_asset_materialization
 
 
-@solid(config_schema={"date": str})
-def my_partitioned_asset_solid(context):
-    partition_date = context.solid_config["date"]
+@op(config_schema={"date": str})
+def my_partitioned_asset_op(context):
+    partition_date = context.op_config["date"]
     df = read_df_for_date(partition_date)
     remote_storage_path = persist_to_storage(df)
     yield AssetMaterialization(asset_key="my_dataset", partition=partition_date)
@@ -106,9 +106,9 @@ def my_partitioned_asset_solid(context):
 # end_partitioned_asset_materialization
 
 
-# start_materialization_solids_marker_2
-@solid
-def my_metadata_materialization_solid(context):
+# start_materialization_ops_marker_2
+@op
+def my_metadata_materialization_op(context):
     df = read_df()
     remote_storage_path = persist_to_storage(df)
     yield AssetMaterialization(
@@ -124,12 +124,12 @@ def my_metadata_materialization_solid(context):
     yield Output(remote_storage_path)
 
 
-# end_materialization_solids_marker_2
+# end_materialization_ops_marker_2
 
 
-# start_materialization_solids_marker_3
-@solid
-def my_asset_key_materialization_solid(context):
+# start_materialization_ops_marker_3
+@op
+def my_asset_key_materialization_op(context):
     df = read_df()
     remote_storage_path = persist_to_storage(df)
     yield AssetMaterialization(
@@ -143,9 +143,12 @@ def my_asset_key_materialization_solid(context):
     yield Output(remote_storage_path)
 
 
-# end_materialization_solids_marker_3
+# end_materialization_ops_marker_3
 
 
-@pipeline
-def my_asset_pipeline():
-    my_materialization_solid()
+@graph
+def my_asset_creation():
+    my_materialization_op()
+
+
+my_asset_creation_job = my_asset_creation.to_job()
