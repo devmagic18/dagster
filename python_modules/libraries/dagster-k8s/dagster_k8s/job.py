@@ -346,6 +346,33 @@ class DagsterK8sJobConfig(
                 "Default: ``[]``. See: "
                 "https://kubernetes.io/docs/tasks/inject-data-application/distribute-credentials-secure/#configure-all-key-value-pairs-in-a-secret-as-container-environment-variables",
             ),
+            "volume_mounts": Field(
+                Array(
+                    Shape(
+                        {
+                            "name": str,
+                            "path": str,
+                            "sub_path": str,
+                            "secret": Field(str, is_required=False),
+                            "configmap": Field(
+                                str, is_required=False
+                            ),  # should this be config_map?
+                            "persistent_volume_claim": Field(
+                                Shape(
+                                    {
+                                        "claim_name": str,
+                                        "read_only": Field(bool, default_value=False),
+                                    }
+                                ),
+                                is_required=False,
+                            ),
+                        }
+                    )
+                ),
+                is_required=False,
+                default_value=[],
+                description="A list of Volume mounts to attach to the job.",
+            ),
         }
 
     @property
@@ -538,18 +565,33 @@ def construct_dagster_k8s_job(
                 name=job_config.instance_config_map
             ),
         )
-    ] + [
-        kubernetes.client.V1Volume(
-            name=mount["name"],
-            config_map=kubernetes.client.V1ConfigMapVolumeSource(name=mount["configmap"]),
-        )
-        if mount.get("configmap")
-        else kubernetes.client.V1Volume(
-            name=mount["name"],
-            secret=kubernetes.client.V1SecretVolumeSource(secret_name=mount["secret"]),
-        )
-        for mount in job_config.volume_mounts
     ]
+    for mount in job_config.volume_mounts:
+        if mount.get("configmap"):
+            volumes.append(
+                kubernetes.client.V1Volume(
+                    name=mount["name"],
+                    config_map=kubernetes.client.V1ConfigMapVolumeSource(name=mount["configmap"]),
+                )
+            )
+        elif mount.get("secret"):
+            volumes.append(
+                kubernetes.client.V1Volume(
+                    name=mount["name"],
+                    secret=kubernetes.client.V1SecretVolumeSource(secret_name=mount["secret"]),
+                )
+            )
+        elif mount.get("persistent_volume_claim"):
+            volumes.append(
+                kubernetes.client.V1Volume(
+                    name=mount["name"],
+                    persistent_volume_claim=kubernetes.client.V1PersistentVolumeClaimVolumeSource(
+                        **mount["persistent_volume_claim"]
+                    ),
+                )
+            )
+        else:
+            raise Exception(f"Unexpected volume mount format: {str(mount)}")
 
     # If the user has defined custom labels, remove them from the pod_template_spec_metadata
     # key and merge them with the dagster labels
